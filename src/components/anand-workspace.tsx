@@ -1,0 +1,182 @@
+import { useEffect, useMemo, useState, type FormEvent, type ReactNode } from "react";
+import { Link, useNavigate } from "@tanstack/react-router";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { toast } from "sonner";
+import { adminNavigation, canRoleAccess, categories as initialCategories, customers, expenses as initialExpenses, formatINR, products as initialProducts, purchases, sales, vendors } from "@/lib/anand-data";
+import type { Role } from "@/lib/anand-data";
+
+type Product = (typeof initialProducts)[number];
+type WorkspaceState = { role: Role; name: string };
+const icons: Record<string, string> = { Dashboard: "◫", Categories: "▦", Products: "□", "Purchase Entry": "＋", Vendors: "♧", "Purchase Reports": "▤", "Sales Billing": "▧", Customers: "♙", Inventory: "▥", Stock: "▣", Expenses: "↘", Reports: "▤", "Vendor Dues": "◷", Settings: "⚙", "Product Search": "⌕" };
+const navForRole = (role: Role) => role === "Admin" ? adminNavigation : ["Dashboard", "Sales Billing", "Product Search", "Customers"];
+
+function Field({ label, value, onChange, type = "text", placeholder = "" }: { label: string; value?: string; onChange?: (value: string) => void; type?: string; placeholder?: string }) {
+  return <label className="grid gap-1.5 text-xs font-semibold text-foreground">{label}<input type={type} value={value} placeholder={placeholder} onChange={event => onChange?.(event.target.value)} className="h-10 min-w-0 rounded-md border border-input bg-background px-3 text-sm font-normal outline-none transition focus:border-ring focus:ring-2 focus:ring-ring/20" /></label>;
+}
+
+function SelectField({ label, value, onChange, options }: { label: string; value: string; onChange: (value: string) => void; options: string[] }) {
+  return <label className="grid gap-1.5 text-xs font-semibold text-foreground">{label}<select value={value} onChange={event => onChange(event.target.value)} className="h-10 min-w-0 rounded-md border border-input bg-background px-3 text-sm font-normal outline-none focus:border-ring focus:ring-2 focus:ring-ring/20">{options.map(option => <option key={option}>{option}</option>)}</select></label>;
+}
+
+function PageHeader({ title, subtitle, action }: { title: string; subtitle: string; action?: ReactNode }) { return <div className="mb-6 flex flex-wrap items-end justify-between gap-4"><div><p className="text-xs font-bold uppercase tracking-[.12em] text-teal">Anand Wholesale / Operations</p><h1 className="font-display mt-1.5 text-2xl font-extrabold">{title}</h1><p className="mt-1 text-sm text-muted-foreground">{subtitle}</p></div>{action}</div>; }
+
+function StatCard({ label, value, detail, tone = "blue" }: { label: string; value: string; detail: string; tone?: string }) {
+  const toneClass = tone === "teal" ? "bg-secondary text-secondary-foreground" : tone === "amber" ? "bg-accent text-accent-foreground" : tone === "green" ? "bg-success/10 text-success" : "bg-primary/10 text-primary";
+  return <div className="rounded-lg border border-border bg-card p-4 shadow-soft sm:p-5"><div className="flex items-center justify-between gap-3"><p className="text-xs font-medium leading-5 text-muted-foreground">{label}</p><span className={`grid size-9 shrink-0 place-items-center rounded-md text-sm font-bold ${toneClass}`}>{icons[label] ?? "◈"}</span></div><p className="font-display mt-3 text-2xl font-extrabold">{value}</p><p className="mt-1 text-[11px] text-muted-foreground">{detail}</p></div>;
+}
+
+function DataTable({ headers, rows, query, empty = "No matching records" }: { headers: string[]; rows: ReactNode[][]; query?: string; empty?: string }) {
+  const shown = query ? rows.filter(row => row.some(cell => String(cell ?? "").toLowerCase().includes(query.toLowerCase()))) : rows;
+  return <div className="overflow-hidden rounded-lg border border-border bg-card"><div className="overflow-x-auto"><table className="w-full min-w-[700px] text-left text-sm"><thead className="border-b border-border bg-muted/70"><tr>{headers.map(h => <th key={h} className="px-4 py-3 text-[11px] font-bold uppercase tracking-wide text-muted-foreground">{h}</th>)}</tr></thead><tbody className="divide-y divide-border">{shown.length ? shown.map((row, i) => <tr key={i} className="transition-colors hover:bg-muted/40">{row.map((cell, j) => <td key={j} className="px-4 py-3.5 text-sm">{cell}</td>)}</tr>) : <tr><td colSpan={headers.length} className="px-4 py-12 text-center text-sm text-muted-foreground">{empty}</td></tr>}</tbody></table></div><div className="flex items-center justify-between border-t border-border px-4 py-3 text-xs text-muted-foreground"><span>Showing {shown.length} of {rows.length} records</span><div className="flex gap-2"><Button size="sm" variant="outline" disabled>Previous</Button><Button size="sm" variant="outline">Next</Button></div></div></div>;
+}
+
+function SearchBar({ value, onChange, placeholder = "Search records…" }: { value: string; onChange: (value: string) => void; placeholder?: string }) {
+  return <label className="flex h-10 w-full items-center gap-2 rounded-md border border-input bg-card px-3 text-muted-foreground sm:max-w-xs"><span className="text-base">⌕</span><input value={value} onChange={event => onChange(event.target.value)} placeholder={placeholder} className="w-full bg-transparent text-sm text-foreground outline-none placeholder:text-muted-foreground" /></label>;
+}
+
+function Overview({ role, onSelect }: { role: Role; onSelect: (view: string) => void }) {
+  const totalStock = initialProducts.reduce((sum, product) => sum + product.quantity * product.purchasePrice, 0);
+  const lowStock = initialProducts.filter(product => product.quantity < 15);
+  const rows = sales.slice(0, 6).map(sale => [<span className="font-semibold text-primary">{sale.id}</span>, sale.customer, sale.product, sale.date, formatINR(sale.total), <Badge variant="secondary">{sale.payment}</Badge>]);
+  const stats = [["Total Products", "1,284", "Across 10 categories", "blue"], ["Total Categories", "10", "All product groups", "teal"], ["Today's Sales", formatINR(48650), "24 bills today", "green"], ["Monthly Sales", formatINR(1248750), "November · 100 entries", "amber"], ["Total Purchases", formatINR(873420), "50 purchase records", "blue"], ["Stock Value", formatINR(totalStock), "At purchase price", "teal"], ["Pending Vendor Payments", formatINR(68540), "Across active vendors", "amber"], ["Expenses", formatINR(63250), "20 expense entries", "blue"], ["Active Customers", "30", "Retail partners", "green"]] as const;
+  return <><PageHeader title={`Good morning, ${role === "Admin" ? "Anand" : "team"}`} subtitle="Here’s what’s happening at your business today." action={<span className="rounded-md border border-border bg-card px-3 py-2 text-xs font-semibold text-muted-foreground">Sunday, 15 November 2026</span>} />
+    <div className="grid grid-cols-2 gap-3 lg:grid-cols-3 xl:grid-cols-5">{stats.map(([label, value, detail, tone]) => <StatCard key={label} label={label} value={value} detail={detail} tone={tone} />)}</div>
+    <div className="mt-7 grid gap-6 xl:grid-cols-[1.55fr_.85fr]"><section><div className="mb-4 flex items-center justify-between"><div><h2 className="font-display text-base font-bold">Recent sales</h2><p className="mt-1 text-xs text-muted-foreground">Latest bills from your counter</p></div><Button variant="outline" size="sm" onClick={() => onSelect("Sales Billing")}>New bill <span aria-hidden="true">＋</span></Button></div><DataTable headers={["Bill no.", "Customer", "Product", "Date", "Amount", "Payment"]} rows={rows} /></section><section><div className="mb-4"><h2 className="font-display text-base font-bold">Stock watch</h2><p className="mt-1 text-xs text-muted-foreground">Items that need your attention</p></div><div className="divide-y divide-border rounded-lg border border-border bg-card">{lowStock.slice(0, 5).map(product => <div key={product.id} className="flex items-center justify-between gap-3 px-4 py-3.5"><div className="min-w-0"><p className="truncate text-sm font-semibold">{product.name}</p><p className="mt-1 text-xs text-muted-foreground">{product.category}</p></div><Badge variant="destructive">{product.quantity} {product.unit}</Badge></div>)}</div><Button className="mt-3 w-full" variant="outline" onClick={() => onSelect(role === "Admin" ? "Stock" : "Product Search")}>Review stock <span aria-hidden="true">→</span></Button></section></div>
+    <div className="mt-7 grid gap-4 sm:grid-cols-2"><button onClick={() => onSelect("Sales Billing")} className="flex items-center justify-between rounded-lg border border-border bg-card px-5 py-4 text-left shadow-soft transition hover:border-primary/40"><span><span className="block font-display text-sm font-bold">Create a bill</span><span className="mt-1 block text-xs text-muted-foreground">Start a sale for a customer</span></span><span className="grid size-9 place-items-center rounded-md bg-primary text-lg text-primary-foreground">＋</span></button>{role === "Admin" && <button onClick={() => onSelect("Purchase Entry")} className="flex items-center justify-between rounded-lg border border-border bg-card px-5 py-4 text-left shadow-soft transition hover:border-teal/40"><span><span className="block font-display text-sm font-bold">Record a purchase</span><span className="mt-1 block text-xs text-muted-foreground">Update stock from a vendor</span></span><span className="grid size-9 place-items-center rounded-md bg-secondary text-lg text-secondary-foreground">↙</span></button>}</div>
+  </>;
+}
+
+function SalesBilling({ products, onSave }: { products: Product[]; onSave: (bill: { id: string; customer: string; total: number }) => void }) {
+  const [customer, setCustomer] = useState("");
+  const [mobile, setMobile] = useState("");
+  const [search, setSearch] = useState("");
+  const [cart, setCart] = useState<{ product: Product; qty: number }[]>([]);
+  const [discount, setDiscount] = useState("0");
+  const [payment, setPayment] = useState("Cash");
+  const [cash, setCash] = useState("");
+  const filtered = products.filter(p => `${p.name} ${p.brand} ${p.sku} ${p.barcode}`.toLowerCase().includes(search.toLowerCase())).slice(0, 6);
+  const subtotal = cart.reduce((sum, item) => sum + item.qty * item.product.sellingPrice, 0);
+  const gst = Math.round(subtotal * 0.05);
+  const grand = Math.max(0, subtotal + gst - Number(discount || 0));
+  const add = (product: Product) => setCart(current => current.some(item => item.product.id === product.id) ? current.map(item => item.product.id === product.id ? { ...item, qty: item.qty + 1 } : item) : [...current, { product, qty: 1 }]);
+  return <><PageHeader title="Sales billing" subtitle="Create a customer bill and record payment." action={<Badge variant="secondary">New invoice · Auto numbered</Badge>} />
+    <div className="grid items-start gap-5 xl:grid-cols-[1.3fr_.7fr]"><div className="grid gap-5"><section className="rounded-lg border border-border bg-card p-4 sm:p-5"><h2 className="font-display text-sm font-bold">Customer details</h2><div className="mt-4 grid gap-3 sm:grid-cols-2"><Field label="Customer name" value={customer} onChange={setCustomer} placeholder="Walk-in customer"/><Field label="Mobile number" value={mobile} onChange={setMobile} placeholder="10-digit mobile number"/></div></section>
+      <section className="rounded-lg border border-border bg-card p-4 sm:p-5"><h2 className="font-display text-sm font-bold">Add products</h2><div className="mt-3"><SearchBar value={search} onChange={setSearch} placeholder="Search name, brand, SKU or scan barcode…"/></div>{search && <div className="mt-2 divide-y divide-border rounded-md border border-border">{filtered.map(product => <button key={product.id} onClick={() => add(product)} className="flex w-full items-center justify-between gap-3 px-3 py-2.5 text-left transition hover:bg-muted"><span><span className="block text-sm font-semibold">{product.name}</span><span className="text-xs text-muted-foreground">{product.brand} · {product.size} · Stock {product.quantity}</span></span><span className="shrink-0 text-sm font-bold">{formatINR(product.sellingPrice)} <span className="text-primary">＋</span></span></button>)}</div>}
+        <div className="mt-4 overflow-x-auto"><table className="w-full min-w-[490px] text-left text-sm"><thead><tr className="border-b border-border text-[10px] font-bold uppercase tracking-wide text-muted-foreground"><th className="py-2">Product</th><th className="py-2">Rate</th><th className="py-2">Qty</th><th className="py-2 text-right">Amount</th><th></th></tr></thead><tbody className="divide-y divide-border">{cart.map(({ product, qty }) => <tr key={product.id}><td className="py-3 pr-3"><p className="font-semibold">{product.name}</p><p className="text-xs text-muted-foreground">{product.size}</p></td><td>{formatINR(product.sellingPrice)}</td><td><input aria-label={`Quantity ${product.name}`} type="number" min="1" max={product.quantity} value={qty} onChange={event => setCart(items => items.map(item => item.product.id === product.id ? { ...item, qty: Math.max(1, Math.min(product.quantity, Number(event.target.value))) } : item))} className="h-8 w-16 rounded border border-input bg-background px-2 text-sm"/></td><td className="text-right font-semibold">{formatINR(product.sellingPrice * qty)}</td><td><button className="px-2 text-muted-foreground" aria-label={`Remove ${product.name}`} onClick={() => setCart(items => items.filter(item => item.product.id !== product.id))}>×</button></td></tr>)}</tbody></table>{!cart.length && <div className="py-12 text-center text-sm text-muted-foreground">Search for a product to add it to this bill.</div>}</div>
+      </section></div>
+      <section className="rounded-lg border border-border bg-card p-4 sm:p-5"><h2 className="font-display text-sm font-bold">Bill summary</h2><div className="mt-4 grid gap-3"><Field label="Discount (₹)" value={discount} onChange={setDiscount} type="number"/><SelectField label="Payment type" value={payment} onChange={setPayment} options={["Cash", "UPI", "Card"]}/>{payment === "Cash" && <Field label="Cash received (₹)" value={cash} onChange={setCash} type="number" placeholder={String(grand)}/>}</div><div className="mt-5 space-y-2.5 border-t border-border pt-4 text-sm"><div className="flex justify-between text-muted-foreground"><span>Subtotal</span><span>{formatINR(subtotal)}</span></div><div className="flex justify-between text-muted-foreground"><span>GST (5%)</span><span>{formatINR(gst)}</span></div><div className="flex justify-between text-muted-foreground"><span>Discount</span><span>− {formatINR(Number(discount || 0))}</span></div><div className="flex justify-between border-t border-border pt-3 font-display text-lg font-extrabold"><span>Grand total</span><span>{formatINR(grand)}</span></div></div>{payment === "Cash" && Number(cash) > grand && <p className="mt-3 rounded-md bg-secondary p-3 text-sm font-semibold text-secondary-foreground">Change due: {formatINR(Number(cash) - grand)}</p>}<div className="mt-5 grid gap-2"><Button onClick={() => { if (!cart.length) return toast.error("Add at least one product to continue."); const invoice = `ANW-${Date.now().toString().slice(-6)}`; onSave({ id: invoice, customer: customer || "Walk-in customer", total: grand }); toast.success(`Bill ${invoice} saved.`); setCart([]); setCustomer(""); setMobile(""); setCash(""); }}><span aria-hidden="true">✓</span> Save bill</Button><Button variant="outline" onClick={() => { if (!cart.length) return toast.error("Add products before printing a bill."); window.print(); toast.success("Print dialog ready."); }}>Print bill <span aria-hidden="true">⌑</span></Button><Button variant="ghost" onClick={() => { setCart([]); setCustomer(""); setMobile(""); setCash(""); toast("Bill cleared."); }}>Cancel bill</Button></div></section>
+    </div></>;
+}
+
+export function Workspace() {
+  const navigate = useNavigate();
+  const [identity, setIdentity] = useState<WorkspaceState | null>(null);
+  const [view, setView] = useState("Dashboard");
+  const [mobileNav, setMobileNav] = useState(false);
+  const [search, setSearch] = useState("");
+  const [productRows, setProductRows] = useState<Product[]>(initialProducts);
+  const [categoryRows, setCategoryRows] = useState(initialCategories);
+  const [expenseRows, setExpenseRows] = useState(initialExpenses);
+  const [billRows, setBillRows] = useState(sales);
+  const [filter, setFilter] = useState("All statuses");
+
+  useEffect(() => {
+    const saved = sessionStorage.getItem("anand-workspace");
+    if (!saved) { void navigate({ to: "/login" }); return; }
+    try {
+      const session = JSON.parse(saved) as WorkspaceState;
+      if (session.role !== "Admin" && session.role !== "Cashier") { sessionStorage.removeItem("anand-workspace"); void navigate({ to: "/login" }); return; }
+      setIdentity(session);
+    } catch { sessionStorage.removeItem("anand-workspace"); void navigate({ to: "/login" }); }
+  }, [navigate]);
+
+  const endSession = () => { sessionStorage.removeItem("anand-workspace"); setIdentity(null); void navigate({ to: "/login" }); };
+  const selectView = (next: string) => {
+    if (!identity || !canRoleAccess(identity.role, next)) { toast.error("This area is not available for this account."); return; }
+    setView(next); setSearch(""); setMobileNav(false);
+  };
+  const exportRows = (rows: (string | number)[][], filename: string) => {
+    const content = rows.map(row => row.map(value => `"${String(value).replaceAll('"', '""')}"`).join(",")).join("\n");
+    const url = URL.createObjectURL(new Blob([content], { type: "text/csv;charset=utf-8" })); const anchor = document.createElement("a"); anchor.href = url; anchor.download = `${filename}.csv`; anchor.click(); URL.revokeObjectURL(url); toast.success("Your report is ready to download.");
+  };
+  const rows = useMemo(() => {
+    if (!identity || !canRoleAccess(identity.role, view)) return [];
+    switch (view) {
+      case "Categories": return categoryRows.map(category => [<span className="font-semibold">{category.id}</span>, category.name, category.description, <Badge variant={category.status === "Active" ? "secondary" : "outline"}>{category.status}</Badge>, <Button size="sm" variant="ghost" aria-label={`Edit ${category.name}`} onClick={() => toast("Category details are ready to edit.")}>Edit</Button>]);
+      case "Products": case "Product Search": return productRows.map(product => [<span className="font-semibold">{product.id}</span>, product.name, product.category, product.brand, product.sku, formatINR(product.purchasePrice), formatINR(product.sellingPrice), `${product.quantity} ${product.unit}`, <Badge variant={product.quantity < 15 ? "destructive" : "secondary"}>{product.quantity < 15 ? "Low stock" : "In stock"}</Badge>]);
+      case "Vendors": return vendors.map(vendor => [<span className="font-semibold">{vendor.name}</span>, vendor.phone, vendor.email, vendor.gst, vendor.address, formatINR(vendor.outstanding), vendor.dueDate, <Badge variant={vendor.status === "Active" ? "secondary" : "outline"}>{vendor.status}</Badge>]);
+      case "Purchase Entry": case "Purchase Reports": return purchases.map(purchase => [<span className="font-semibold">{purchase.id}</span>, purchase.vendor, purchase.product, purchase.quantity, formatINR(purchase.total), formatINR(purchase.paid), formatINR(purchase.due), purchase.dueDate, <Badge variant={purchase.payment === "Overdue" ? "destructive" : purchase.payment === "Pending" ? "outline" : "secondary"}>{purchase.payment}</Badge>, purchase.date]);
+      case "Customers": return customers.map(customer => [<span className="font-semibold">{customer.name}</span>, customer.phone, customer.address, formatINR(customer.totalPurchase), formatINR(customer.outstanding)]);
+      case "Sales Billing": case "Reports": return billRows.map(sale => [<span className="font-semibold">{sale.id}</span>, sale.customer, sale.product, sale.quantity, sale.date, formatINR(sale.total), <Badge variant="secondary">{sale.payment}</Badge>]);
+      case "Inventory": case "Stock": return productRows.map(product => [<span className="font-semibold">{product.name}</span>, product.quantity, Math.round(product.quantity * 0.35), Math.round(product.quantity * 0.25), Math.max(0, Math.round(product.quantity * 1.1)), formatINR(product.purchasePrice * product.quantity), <Badge variant={product.quantity < 15 ? "destructive" : "secondary"}>{product.quantity < 15 ? "Reorder" : "Healthy"}</Badge>]);
+      case "Expenses": return expenseRows.map(expense => [<span className="font-semibold">{expense.name}</span>, expense.category, formatINR(expense.amount), expense.date, expense.description]);
+      case "Vendor Dues": return purchases.filter(purchase => purchase.due > 0).map(purchase => [<span className="font-semibold">{purchase.vendor}</span>, purchase.invoice, formatINR(purchase.due), purchase.dueDate, <Badge variant={purchase.payment === "Overdue" ? "destructive" : "outline"}>{purchase.payment}</Badge>]);
+      default: return [];
+    }
+  }, [view, identity, categoryRows, productRows, expenseRows, billRows]);
+
+  const listConfig: Record<string, { headers: string[]; title: string; subtitle: string }> = {
+    Categories: { headers: ["Code", "Category name", "Description", "Status", "Action"], title: "Product categories", subtitle: "Organize your catalogue into product groups." },
+    Products: { headers: ["Code", "Product", "Category", "Brand", "SKU", "Cost", "Selling", "Quantity", "Status"], title: "Products", subtitle: "Manage prices, product details, and stock levels." },
+    "Product Search": { headers: ["Code", "Product", "Category", "Brand", "SKU", "Cost", "Selling", "Quantity", "Status"], title: "Product search", subtitle: "Look up items and current availability." },
+    Vendors: { headers: ["Vendor", "Phone", "Email", "GST number", "Address", "Outstanding", "Due date", "Status"], title: "Vendors", subtitle: "Manage supplier information and balances." },
+    "Purchase Entry": { headers: ["Purchase ID", "Vendor", "Product", "Qty", "Total", "Paid", "Due", "Due date", "Payment", "Date"], title: "Purchase records", subtitle: "Recent purchase entries from your vendors." },
+    "Purchase Reports": { headers: ["Purchase ID", "Vendor", "Product", "Qty", "Total", "Paid", "Due", "Due date", "Payment", "Date"], title: "Purchase reports", subtitle: "Review purchase activity and payment status." },
+    Customers: { headers: ["Customer", "Mobile", "Address", "Total purchase", "Outstanding"], title: "Customers", subtitle: "Retail partners and their purchase history." },
+    "Inventory": { headers: ["Product", "Opening stock", "Purchased", "Sold", "Available", "Stock value", "Status"], title: "Inventory", subtitle: "Stock movement and current inventory value." },
+    Stock: { headers: ["Product", "Current stock", "Purchase quantity", "Sold quantity", "Remaining", "Value", "Alert"], title: "Stock management", subtitle: "See on-hand quantities and items to reorder." },
+    Expenses: { headers: ["Expense", "Category", "Amount", "Date", "Description"], title: "Expenses", subtitle: "Record and review business operating costs." },
+    Reports: { headers: ["Bill no.", "Customer", "Product", "Qty", "Date", "Total", "Payment"], title: "Sales reports", subtitle: "Sales ledger · 100 mock entries." },
+    "Vendor Dues": { headers: ["Vendor", "Invoice number", "Due amount", "Due date", "Status"], title: "Vendor due payments", subtitle: "Outstanding invoices and upcoming payments." },
+  };
+
+  if (!identity) return <div className="grid min-h-screen place-items-center bg-background text-sm text-muted-foreground">Opening your workspace…</div>;
+  const config = listConfig[view];
+  return <div className="min-h-screen bg-background"><div className="flex min-h-screen">
+    <aside className={`fixed inset-y-0 left-0 z-40 flex w-[260px] flex-col bg-sidebar text-sidebar-foreground shadow-xl transition-transform md:sticky md:top-0 md:h-screen md:translate-x-0 md:shadow-none ${mobileNav ? "translate-x-0" : "-translate-x-full"}`}>
+      <div className="flex h-[76px] items-center justify-between border-b border-sidebar-border px-5"><Link to="/" className="flex items-center gap-3 text-sidebar-foreground"><span className="grid size-10 place-items-center rounded-lg bg-sidebar-primary font-display text-lg font-extrabold text-sidebar-primary-foreground">A</span><span className="leading-tight"><span className="block font-display text-sm font-extrabold">Anand Wholesale</span><span className="block text-[10px] font-medium text-sidebar-foreground/55">BILLING & INVENTORY</span></span></Link><button onClick={() => setMobileNav(false)} className="grid size-8 place-items-center text-sidebar-foreground md:hidden" aria-label="Close menu">×</button></div>
+      <div className="border-b border-sidebar-border px-5 py-4"><p className="text-[10px] font-bold uppercase tracking-[.14em] text-sidebar-foreground/50">Signed in as</p><div className="mt-2 flex items-center gap-2.5"><span className="grid size-9 place-items-center rounded-full bg-sidebar-accent text-sm font-bold">{identity.name.charAt(0).toUpperCase()}</span><span><span className="block text-sm font-semibold">{identity.name}</span><Badge variant="outline" className="mt-1 border-sidebar-border text-[10px] text-sidebar-primary">{identity.role}</Badge></span></div></div>
+      <nav aria-label="Workspace navigation" className="no-scrollbar flex-1 space-y-1 overflow-y-auto px-3 py-4">{navForRole(identity.role).map((item, i) => <button key={item} onClick={() => selectView(item)} className={`flex w-full items-center gap-3 rounded-md px-3 py-2.5 text-left text-[13px] font-medium transition-colors ${view === item ? "bg-sidebar-accent text-sidebar-primary" : "text-sidebar-foreground/75 hover:bg-sidebar-accent hover:text-sidebar-foreground"}`}><span className="grid size-5 place-items-center text-sm">{icons[item] ?? "·"}</span><span className="flex-1">{item}</span>{item === "Vendor Dues" && <span className="rounded-full bg-destructive px-1.5 py-0.5 text-[10px] font-bold text-destructive-foreground">4</span>}{i === 0 && <span className="sr-only">Selected section</span>}</button>)}</nav>
+      <div className="border-t border-sidebar-border p-3"><Button variant="sidebarGhost" className="w-full justify-start" onClick={endSession}><span aria-hidden="true">↪</span> Sign out</Button><p className="px-3 pt-3 text-[10px] text-sidebar-foreground/45">© 2026 Anand Wholesale</p></div>
+    </aside>
+    {mobileNav && <button aria-label="Close navigation overlay" onClick={() => setMobileNav(false)} className="fixed inset-0 z-30 bg-foreground/30 md:hidden"/>}
+    <main className="min-w-0 flex-1"><header className="sticky top-0 z-20 flex h-[64px] items-center justify-between border-b border-border bg-card/95 px-4 backdrop-blur sm:px-7"><div className="flex items-center gap-3"><Button variant="ghost" size="icon" className="md:hidden" aria-label="Open navigation" onClick={() => setMobileNav(true)}><span className="text-lg">☰</span></Button><span className="hidden text-xs font-medium text-muted-foreground sm:block">Business workspace</span><span className="hidden text-muted-foreground sm:block">/</span><span className="text-sm font-semibold">{view}</span></div><div className="flex items-center gap-3"><span className="hidden text-xs text-muted-foreground sm:block">Extension Center · Vijayapura</span><span className="grid size-8 place-items-center rounded-full bg-secondary text-xs font-bold text-secondary-foreground">{identity.name.charAt(0).toUpperCase()}</span></div></header>
+      <div className="mx-auto max-w-[1500px] p-4 sm:p-6 lg:p-8">{view === "Dashboard" ? <Overview role={identity.role} onSelect={selectView}/> : view === "Sales Billing" ? <SalesBilling products={productRows} onSave={bill => setBillRows(current => [{ ...bill, product: "Multiple items", quantity: 1, payment: "Cash", date: "2026-11-15" }, ...current])}/> : config ? <>
+        <div className="mb-5 flex flex-wrap items-end justify-between gap-3"><PageHeader title={config.title} subtitle={config.subtitle}/><div className="flex flex-wrap gap-2">{["Purchase Reports", "Reports", "Vendor Dues"].includes(view) && <SelectField label="" value={filter} onChange={setFilter} options={["All statuses", "Paid", "Pending", "Overdue"]}/>}<Button variant="outline" onClick={() => exportRows([[...config.headers], ...rows.map(row => row.map(cell => String(cell)))], view.toLowerCase().replaceAll(" ", "-"))}>↓ Export</Button>{["Purchase Reports", "Reports", "Vendor Dues"].includes(view) && <Button variant="outline" onClick={() => window.print()}>Print</Button>}</div></div>
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-3"><SearchBar value={search} onChange={setSearch}/>{["Categories", "Products", "Vendors", "Purchase Entry", "Expenses"].includes(view) && <Button onClick={() => document.getElementById("entry-form")?.scrollIntoView({ behavior: "smooth", block: "center" })}>＋ Add {view === "Purchase Entry" ? "purchase" : view === "Purchase Entry" ? "purchase" : view.slice(0, -1).toLowerCase()}</Button>}</div>
+        <DataTable headers={config.headers} rows={filter === "All statuses" ? rows : rows.filter(row => String(row.at(-1)).includes(filter))} query={search}/>
+        {view === "Categories" && <EntryForm id="entry-form" title="Add category" labels={["Category name", "Description"]} onSave={values => { const name = values[0]?.trim(); if (!name) return toast.error("Add a category name first."); setCategoryRows(current => [{ id: `CAT-${String(current.length + 1).padStart(3, "0")}`, name, description: values[1] ?? "", status: "Active" }, ...current]); toast.success("Category added."); }}/ >}
+        {view === "Products" && <EntryForm id="entry-form" title="Add product" labels={["Product name", "Category", "Brand", "Size", "SKU", "Purchase price", "Selling price", "Quantity", "Unit"]} onSave={values => { const name = values[0]?.trim(); if (!name) return toast.error("Add a product name first."); const category = values[1] || "Packaged Foods"; setProductRows(current => [{ id: `PRD-${String(current.length + 1).padStart(3, "0")}`, name, category, brand: values[2] || "Local Brand", size: values[3] || "1 unit", sku: values[4] || `ANW-${Date.now().toString().slice(-5)}`, purchasePrice: Number(values[5]) || 0, sellingPrice: Number(values[6]) || 0, quantity: Number(values[7]) || 0, unit: values[8] || "Piece", barcode: `890${Date.now().toString().slice(-10)}` }, ...current]); toast.success("Product added to the catalogue."); }}/ >}
+        {view === "Vendors" && <EntryForm id="entry-form" title="Add vendor" labels={["Vendor name", "Phone", "Email", "GST number", "Address"]} onSave={() => toast.success("Vendor details saved.")}/ >}
+        {view === "Purchase Entry" && <EntryForm id="entry-form" title="New purchase entry" labels={["Purchase ID", "Vendor name", "Invoice number", "Purchase date", "Due date", "Payment status", "Product", "Quantity", "Rate", "Discount", "GST", "Notes"]} onSave={() => toast.success("Purchase entry saved. Stock records are ready to update.")}/ >}
+        {view === "Expenses" && <EntryForm id="entry-form" title="Add expense" labels={["Expense name", "Category", "Amount", "Date", "Description"]} onSave={values => { const name = values[0]?.trim(); if (!name) return toast.error("Add an expense name first."); setExpenseRows(current => [{ id: `EXP-${String(current.length + 1).padStart(3, "0")}`, name, category: values[1] || "Miscellaneous", amount: Number(values[2]) || 0, date: values[3] || "2026-11-15", description: values[4] || "" }, ...current]); toast.success("Expense recorded."); }}/ >}
+      </> : view === "Settings" ? <Settings/> : <div className="rounded-lg border border-border bg-card p-8 text-center"><h2 className="font-display text-xl font-bold">{view}</h2><p className="mt-2 text-sm text-muted-foreground">Choose an available section from the navigation.</p></div>}</div>
+    </main>
+  </div></div>;
+}
+
+function EntryForm({ id, title, labels, onSave }: { id: string; title: string; labels: string[]; onSave: (values: string[]) => void }) {
+  const [values, setValues] = useState<string[]>(labels.map(() => ""));
+  const submit = (event: FormEvent) => { event.preventDefault(); onSave(values); setValues(labels.map(() => "")); };
+  return <form id={id} onSubmit={submit} className="mt-6 rounded-lg border border-border bg-card p-4 shadow-soft sm:p-5"><h2 className="font-display text-sm font-bold">{title}</h2><div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">{labels.map((label, index) => <Field key={label} label={label} value={values[index]} onChange={value => setValues(current => current.map((entry, i) => i === index ? value : entry))} type={/date/i.test(label) ? "date" : /price|quantity|amount|rate|discount|gst/i.test(label) ? "number" : "text"} placeholder={label}/>)}</div><Button className="mt-4">Save entry <span aria-hidden="true">✓</span></Button></form>;
+}
+
+function Settings() {
+  const [form, setForm] = useState({ company: "Anand Wholesale", gst: "29AABCU9603R1Z2", address: "Extension Center, NH-52, Vijayapur-Solapur Rd, Tidagundi, Vijayapura, Karnataka - 586119", email: "anand@gmail.com", phone: "+91 91759 95609", prefix: "ANW" });
+  const update = (key: keyof typeof form, value: string) => setForm(current => ({ ...current, [key]: value }));
+  return <><PageHeader title="Business settings" subtitle="Update the details shown on your invoices and reports."/><div className="max-w-3xl rounded-lg border border-border bg-card p-5 shadow-soft sm:p-7"><form onSubmit={event => { event.preventDefault(); toast.success("Business information saved for this session."); }}><div className="grid gap-4 sm:grid-cols-2"><Field label="Company name" value={form.company} onChange={value => update("company", value)}/><Field label="GST number" value={form.gst} onChange={value => update("gst", value)}/><Field label="Email" value={form.email} onChange={value => update("email", value)} type="email"/><Field label="Phone" value={form.phone} onChange={value => update("phone", value)}/><div className="sm:col-span-2"><Field label="Address" value={form.address} onChange={value => update("address", value)}/></div><Field label="Invoice prefix" value={form.prefix} onChange={value => update("prefix", value)}/><Field label="Logo upload (mock)" value="" placeholder="Choose file"/></div><p className="mt-4 text-xs text-muted-foreground">Logo upload is a preview-only control; no file is stored.</p><Button type="submit" className="mt-5">Save business information</Button></form></div></>;
+}
+
+export function LoginForm() {
+  const navigate = useNavigate();
+  const [email, setEmail] = useState(""); const [password, setPassword] = useState(""); const [reveal, setReveal] = useState(false);
+  const submit = (event: FormEvent) => {
+    event.preventDefault();
+    const users = [{ email: "admin@anand.com", password: "admin123", role: "Admin" as const, name: "Anand Sharma" }, { email: "cashier@anand.com", password: "cash123", role: "Cashier" as const, name: "Counter Cashier" }];
+    const user = users.find(candidate => candidate.email === email.trim().toLowerCase() && candidate.password === password);
+    if (!user) return toast.error("Email or password doesn’t match the sample accounts.");
+    sessionStorage.setItem("anand-workspace", JSON.stringify({ role: user.role, name: user.name })); toast.success(`Welcome, ${user.name}.`); void navigate({ to: "/app" });
+  };
+  return <form onSubmit={submit} className="grid gap-4"><Field label="Email address" value={email} onChange={setEmail} type="email" placeholder="you@anand.com"/><label className="grid gap-1.5 text-xs font-semibold">Password<span className="flex h-10 items-center rounded-md border border-input bg-background pr-2 focus-within:ring-2 focus-within:ring-ring/20"><input required value={password} onChange={event => setPassword(event.target.value)} type={reveal ? "text" : "password"} placeholder="Enter your password" className="h-full min-w-0 flex-1 bg-transparent px-3 text-sm font-normal outline-none"/><button type="button" onClick={() => setReveal(v => !v)} className="rounded px-2 py-1 text-xs font-semibold text-muted-foreground">{reveal ? "Hide" : "Show"}</button></span></label><Button type="submit" size="lg" className="mt-1 w-full">Sign in to workspace <span aria-hidden="true">→</span></Button></form>;
+}

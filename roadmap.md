@@ -1,0 +1,3 @@
+- [ ] Migrate Anand Wholesale public pages, mock data, and billing workspace into the existing TanStack app.
+- [ ] Complete the requested admin and cashier workflows without adding a backend or persistent data store.
+- [ ] Verify route metadata, build, tests, responsive rendering, and both mock-role workflows; update migration ledger.
