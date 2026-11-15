@@ -1,0 +1,17 @@
+{
+  "source": "github:TridevSharma1/anand-wholesale-ledger",
+  "capabilities": [
+    { "capability": "application code and routes", "source": "GitHub repository", "outcome": "migrate into the existing TanStack Start project while preserving its pinned framework", "status": "pending", "next_action": "recreate public pages, billing workspace, and route metadata; verify preview" },
+    { "capability": "schema", "source": "none; repository has no database schema or database provider", "outcome": "not applicable; keep application fully mock-only as requested", "status": "not_applicable", "next_action": "none" },
+    { "capability": "records", "source": "literal mock arrays in the repository", "outcome": "migrate 10 categories, 30 products, 20 vendors, 30 customers, 50 purchases, 100 sales, and 20 expenses", "status": "pending", "next_action": "preserve fixtures and verify displayed counts and sample flows" },
+    { "capability": "auth identities", "source": "two hardcoded sample sign-in identities; no user export or real auth provider", "outcome": "retain mock sign-in only; no real user migration", "status": "pending", "next_action": "verify the sample admin and cashier sign-in flows" },
+    { "capability": "authorization", "source": "client-side role navigation and view checks in source", "outcome": "preserve strict cashier-only billing, product lookup, customers, and dashboard access", "status": "pending", "next_action": "verify cashier cannot open administrator sections" },
+    { "capability": "uploaded file bytes", "source": "bundled warehouse image; logo upload is mock-only", "outcome": "migrate the bundled image and keep logo upload non-persistent", "status": "pending", "next_action": "verify the bundled image renders" },
+    { "capability": "external providers", "source": "none detected", "outcome": "none to preserve", "status": "not_applicable", "next_action": "none" },
+    { "capability": "public endpoints and callbacks", "source": "none detected", "outcome": "none to preserve", "status": "not_applicable", "next_action": "none" },
+    { "capability": "webhooks and schedules", "source": "none detected", "outcome": "none to preserve", "status": "not_applicable", "next_action": "none" },
+    { "capability": "secrets", "source": "none detected", "outcome": "none required for mock-only behavior", "status": "not_applicable", "next_action": "none" },
+    { "capability": "cutover", "source": "unpublished source repository; no production URL supplied", "outcome": "keep this project’s current deployment target; no source cutover", "status": "pending", "next_action": "verify preview; publication remains optional" },
+    { "capability": "verification", "source": "migrated preview", "outcome": "verify public routes, admin operations, cashier access limits, and responsive presentation", "status": "pending", "next_action": "run tests and exercise the preview" }
+  ]
+}
