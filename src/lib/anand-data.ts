@@ -76,11 +76,11 @@ export const customers = Array.from({ length: 30 }, (_, i) => {
 });
 
 export const purchases = Array.from({ length: 50 }, (_, i) => {
-  const vendor = vendors[i % vendors.length];
-  const product = products[(i * 3) % products.length];
+  const vendor = vendors[i % vendors.length]!;
+  const product = products[(i * 3) % products.length]!;
   const quantity = 12 + (i * 7) % 92;
   const total = quantity * product.purchasePrice;
-  const due = [0, 0, 0, 1240, 3800, 6800][i % 6];
+  const due = [0, 0, 0, 1240, 3800, 6800][i % 6]!;
   const day = String(1 + (i % 28)).padStart(2, "0");
   return {
     id: `PUR-${String(20261000 + i)}`, vendor: vendor.name, product: product.name, quantity, total,
@@ -90,8 +90,8 @@ export const purchases = Array.from({ length: 50 }, (_, i) => {
 });
 
 export const sales = Array.from({ length: 100 }, (_, i) => {
-  const customer = customers[i % customers.length];
-  const product = products[(i * 7 + 4) % products.length];
+  const customer = customers[i % customers.length]!;
+  const product = products[(i * 7 + 4) % products.length]!;
   return {
     id: `ANW-${String(4101 + i)}`, customer: customer.name, product: product.name,
     quantity: 1 + (i * 3) % 18, total: product.sellingPrice * (1 + (i * 3) % 18),
